@@ -49,6 +49,28 @@ println("Loading data from $CSV_FILE...")
 println("Reference bedtime: $ref_bedtime_str (Offset: $ref_offset)")
 df = CSV.read(CSV_FILE, DataFrame)
 
+function format_hour_offset(offset::Real)
+    h = offset
+    while h < 0
+        h += 24
+    end
+    while h >= 24
+        h -= 24
+    end
+
+    hours = floor(Int, h)
+    minutes = round(Int, (h - hours) * 60)
+
+    if minutes == 60
+        hours += 1
+        minutes = 0
+    end
+
+    hours = hours % 24
+
+    return lpad(hours, 2, '0') * ":" * lpad(minutes, 2, '0')
+end
+
 # 2. Preprocess Data
 # Convert Start column to DateTime
 # Format in CSV seems to be: "2025-12-09 22:50:35" (yyyy-mm-dd HH:MM:SS)
@@ -77,6 +99,14 @@ aggregated_df = combine(gdf, "Duration (hr)" => sum => :TotalDuration)
 # Columns: SleepDay, Awake, Core, Deep, REM
 final_df = unstack(aggregated_df, :SleepDay, :Value, :TotalDuration)
 
+
+
+# drop the Asleep column if it exists
+select!(final_df, setdiff(names(final_df), ["Asleep"]))
+
+#final_df.Asleep = [sum(skipmissing(row[Not(:SleepDay,:Awake)])) for row in eachrow(final_df)]
+
+
 # Fill missing values with 0.0 (in case a category is missing for a day)
 for col in names(final_df)
     if col != "SleepDay"
@@ -86,8 +116,6 @@ end
 
 # Calculate Total Sleep Time (Sum of all columns except SleepDay and Awake)
 # We filter columns that are actually sleep stages (not metadata, not Awake)
-# Note: Added potential other names just in case, but usually it's Core, Deep, REM. 
-# Better approach: All columns excluding SleepDay and Awake.
 cols_to_sum = filter(c -> c != "SleepDay" && c != "Awake", names(final_df))
 final_df.TotalSleepTime = sum.(eachrow(final_df[:, cols_to_sum]))
 
@@ -126,12 +154,35 @@ sort!(bedtime_df, :SleepDay)
 final_df.Bedtime = bedtime_df.OffsetHours
 final_df.WakeTime = bedtime_df.WakeTimeOffsetHours
 
+# drop any rows that have missing data in all :Core, :Deep, :REM columns
+final_df = dropmissing(final_df, [:Core, :Deep, :REM])
+
 # remove any rows where bedtime is outside the reference window (+/- 2 hours)
 # This assumes a 4-hour window around the expected bedtime.
 final_df = final_df[final_df.Bedtime.>=(ref_offset-2.5), :]
 final_df = final_df[final_df.Bedtime.<=(ref_offset+2.5), :]
 
+# convert Bedtime from an offset from midnight to a string in the format HH:MM
+# first create a new df which is a copy of final_df
+bedtime_df = copy(final_df)
+bedtime_df.BedTime = format_hour_offset.(final_df.Bedtime)
+bedtime_df.WakeTime = format_hour_offset.(final_df.WakeTime)
+bedtime_df.TotalSleepTime = final_df.TotalSleepTime
+# round all numbers to 2 digits in bedtime_df for all numerical columns
+for col in names(bedtime_df)
+    if col != "SleepDay" && col != "BedTime" && col != "WakeTime"
+        bedtime_df[!, col] = round.(bedtime_df[!, col], digits=2)
+    end
+end
 
+# make sure the columns are in teh right order for export. Should be :Deep :Core :Rem :Awake: :BedTime :AwakeTime
+bedtime_df = bedtime_df[:, [:SleepDay, :Deep, :Core, :REM, :Awake, :TotalSleepTime, :BedTime, :WakeTime]]
+
+# output the bedtime_df to a csv file
+CSV.write("sleep_data.csv", bedtime_df)
+println("Sleep data saved to sleep_data.csv")
+
+# change teh Bedtime and WakeTime to a string 
 #bedtime_sleep_correlation = cor(final_df.TotalSleepTime, final_df.Bedtime)
 #println("Correlation between Bedtime (offset) and Total Sleep Time: ", round(bedtime_sleep_correlation, digits=4))
 

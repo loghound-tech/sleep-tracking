@@ -296,6 +296,13 @@ Generate and save all visualizations:
 - Stacked bar chart with bedtime overlay
 """
 function generate_visualizations(final_df::DataFrame, bedtime_df::DataFrame)
+    # Create results directory if it doesn't exist
+    results_dir = "results"
+    if !isdir(results_dir)
+        mkdir(results_dir)
+        println("Created results directory: $results_dir")
+    end
+
     # Calculate and print statistics
     bedtime_std = std(final_df.BedTime)
     bedtime_mean = mean(final_df.BedTime)
@@ -309,12 +316,16 @@ function generate_visualizations(final_df::DataFrame, bedtime_df::DataFrame)
         PlotlyJS.histogram(x=final_df.BedTime, nbinsx=20),
         PlotlyJS.Layout(title="Bedtime Distribution", xaxis_title="Hours from Midnight", yaxis_title="Count")
     )
+    PlotlyJS.savefig(p_bedtime_dist, joinpath(results_dir, "bedtime_distribution.html"))
+    println("Bedtime distribution saved to $(joinpath(results_dir, "bedtime_distribution.html"))")
 
     # Waketime distribution histogram
     p_waketime_dist = PlotlyJS.plot(
         PlotlyJS.histogram(x=final_df.WakeTime, nbinsx=20),
         PlotlyJS.Layout(title="Wake Time Distribution", xaxis_title="Hours from Midnight", yaxis_title="Count")
     )
+    PlotlyJS.savefig(p_waketime_dist, joinpath(results_dir, "waketime_distribution.html"))
+    println("Waketime distribution saved to $(joinpath(results_dir, "waketime_distribution.html"))")
 
     # Correlation matrix
     corr_cols = filter(c -> c ∉ ["SleepDay", "Asleep"], names(final_df))
@@ -354,8 +365,8 @@ function generate_visualizations(final_df::DataFrame, bedtime_df::DataFrame)
         )
     )
 
-    PlotlyJS.savefig(p_corr, "correlation_matrix.html")
-    println("Correlation matrix saved to correlation_matrix.html")
+    PlotlyJS.savefig(p_corr, joinpath(results_dir, "correlation_matrix.html"))
+    println("Correlation matrix saved to $(joinpath(results_dir, "correlation_matrix.html"))")
 
     # Stacked bar chart with bedtime overlay
     categories = ["Deep", "Core", "REM", "Awake", "AwakeCount"]
@@ -413,8 +424,8 @@ function generate_visualizations(final_df::DataFrame, bedtime_df::DataFrame)
     )
 
     p = PlotlyJS.plot(all_traces, layout)
-    PlotlyJS.savefig(p, "sleep_analysis_plot.html")
-    println("Plot saved to sleep_analysis_plot.html")
+    PlotlyJS.savefig(p, joinpath(results_dir, "sleep_analysis_plot.html"))
+    println("Plot saved to $(joinpath(results_dir, "sleep_analysis_plot.html"))")
 end
 
 # ==========================================
@@ -437,6 +448,13 @@ end
 
 
 function analyze_sleep_data(df::DataFrame)
+
+    # Create results directory if it doesn't exist
+    results_dir = "results"
+    if !isdir(results_dir)
+        mkdir(results_dir)
+        println("Created results directory: $results_dir")
+    end
 
     # Create a clean numeric column for Bedtime 
     # make a copy of df
@@ -573,8 +591,10 @@ function analyze_sleep_data(df::DataFrame)
             ]
         ))
 
-        # Display the plot (opens in browser/viewer depending on IDE)
-        display(p)
+        # Save the plot to results directory
+        plot_filename = joinpath(results_dir, "bedtime_vs_$(lowercase(target)).html")
+        PlotlyJS.savefig(p, plot_filename)
+        println("Saved plot: $plot_filename")
     end
 end
 
